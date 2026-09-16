@@ -8,6 +8,11 @@ protégée par jeton.
 Le projet sert deux objectifs : comprendre n8n en le voyant fonctionner, et
 disposer d'une base réellement utilisable en production.
 
+![La page de démonstration : formulaire, parcours de la requête dans le workflow n8n, et boîte de réception](docs/images/apercu.png)
+
+*La page de démonstration, ici avec des messages d'exemple. Elle existe aussi en
+[thème sombre](docs/images/apercu-sombre.png).*
+
 ## Ce que le projet contient
 
 * Un workflow n8n de 16 nœuds, avec trois pipelines indépendants.

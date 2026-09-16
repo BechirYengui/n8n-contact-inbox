@@ -1,0 +1,72 @@
+name: Vérifications
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Syntaxe des scripts shell
+        run: |
+          for script in setup.sh start.sh frontend.sh test.sh deploy/deploy.sh; do
+            bash -n "$script" && echo "ok $script"
+          done
+
+      - name: Syntaxe JavaScript
+        run: |
+          node --check scripts/prepare.mjs && echo "ok scripts/prepare.mjs"
+          node -e "
+            const fs = require('fs');
+            const page = fs.readFileSync('frontend/index.html', 'utf8');
+            const match = /<script>([\s\S]*?)<\/script>/.exec(page);
+            if (!match) throw new Error('script introuvable dans la page');
+            fs.writeFileSync('page.mjs', match[1]);
+          "
+          node --check page.mjs && echo "ok frontend/index.html"
+          rm page.mjs
+
+      - name: Workflow n8n valide
+        run: |
+          node -e "
+            const workflow = JSON.parse(require('fs').readFileSync('workflows/contact-inbox.json', 'utf8'));
+            const names = new Set(workflow.nodes.map((node) => node.name));
+            if (workflow.nodes.length !== 16) throw new Error('nombre de nœuds inattendu : ' + workflow.nodes.length);
+            for (const source of Object.keys(workflow.connections)) {
+              if (!names.has(source)) throw new Error('connexion depuis un nœud inconnu : ' + source);
+              for (const output of workflow.connections[source].main) {
+                for (const link of output) {
+                  if (!names.has(link.node)) throw new Error('connexion vers un nœud inconnu : ' + link.node);
+                }
+              }
+            }
+            console.log('workflow valide,', workflow.nodes.length, 'nœuds');
+          "
+
+      - name: Liens de la documentation
+        run: |
+          node -e "
+            const fs = require('fs');
+            const readme = fs.readFileSync('README.md', 'utf8');
+            const links = [...readme.matchAll(/\]\((docs\/[a-z-]+\.md)\)/g)].map((m) => m[1]);
+            for (const link of new Set(links)) {
+              if (!fs.existsSync(link)) throw new Error('lien cassé dans le README : ' + link);
+            }
+            console.log(new Set(links).size, 'liens de documentation valides');
+          "
+
+      - name: Aucun secret versionné
+        run: |
+          if git ls-files | grep -qx '.env'; then
+            echo 'Le fichier .env ne doit jamais être versionné'
+            exit 1
+          fi
+          echo 'ok, aucun .env dans le dépôt'
