@@ -36,6 +36,27 @@ relire à tout moment :
 grep ^ADMIN_TOKEN= .env | cut -d= -f2
 ```
 
+### Qui a besoin du jeton admin
+
+Le jeton n'est le jeton d'aucun service extérieur : c'est une chaîne aléatoire
+que `setup.sh` génère pour toi et garde dans `.env`. Il protège uniquement la
+lecture des messages.
+
+| Qui | Ce qu'il fait | Jeton |
+|---|---|---|
+| Un visiteur du site | Envoie un message | Aucun, `POST /contact` est public |
+| Toi, le propriétaire | Lit la boîte de réception | Obligatoire |
+
+Si quelqu'un clone ce dépôt, il ne reçoit pas ton jeton : `.env` n'est pas
+versionné. Son propre `setup.sh` lui en génère un, pour son installation et ses
+propres messages.
+
+Pour faire tester ton instance déployée, donne simplement l'adresse de la page :
+envoyer un message ne demande rien. Ne partage pas ton jeton, il ouvrirait
+l'accès à tous les messages reçus, noms et adresses compris. Pour une vraie
+démonstration, déploie une seconde instance avec des messages fictifs et un
+jeton dédié, que tu pourras révoquer.
+
 Deux règles à retenir :
 
 1. n8n doit être **arrêté** pendant `setup.sh`, et **redémarré** après. Les
