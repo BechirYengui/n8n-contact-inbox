@@ -123,3 +123,23 @@ FRONTEND_PORT=8090 ./frontend.sh
 
 Si tu changes le port de la page, mets `ALLOWED_ORIGINS` à jour, sinon le
 navigateur bloquera ses appels.
+
+## Adresse de l'API vue par la page
+
+La page choisit seule l'adresse des webhooks :
+
+| Situation | Adresse utilisée |
+|---|---|
+| Servie sur le port 8080 en local | `http://localhost:5678/webhook` |
+| Servie par Caddy en production | `/webhook`, sur le même domaine |
+
+Pour viser une autre instance pendant un test, ajoute `?api=` à l'adresse de la
+page :
+
+```
+http://localhost:8085/?api=http://localhost:5699/webhook
+```
+
+Ce paramètre n'est accepté que si la page est ouverte depuis `localhost`. En
+production il est ignoré, pour qu'un lien piégé ne puisse pas faire dialoguer la
+page avec un serveur tiers et récupérer un jeton saisi par erreur.

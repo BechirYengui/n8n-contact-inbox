@@ -71,6 +71,29 @@ GET /contacts → Lire la Data Table → Formater la liste → 200 { count, subm
 Le détail nœud par nœud, et les raisons de chaque choix, sont dans
 [docs/architecture.md](docs/architecture.md).
 
+## La page de démonstration
+
+Un seul fichier HTML, sans bibliothèque ni police à télécharger : elle s'affiche
+instantanément et fonctionne hors ligne, seuls les appels à n8n ont besoin du
+réseau.
+
+Ce qu'elle apporte au delà du formulaire :
+
+* **Le parcours dans le workflow** s'allume nœud par nœud à chaque appel, avec
+  la branche réellement suivie.
+* **Le journal des appels** montre la requête et la réponse brutes, et propose
+  de copier chaque appel sous forme de commande curl.
+* **Quatre exemples** pré-remplissent le formulaire, dont un robot qui déclenche
+  le champ piège.
+* **La boîte de réception** offre recherche, filtre par priorité, tri et
+  rafraîchissement automatique, suspendu quand l'onglet est en arrière plan.
+* **Le jeton admin** est gardé dans l'onglet uniquement, jamais affiché dans le
+  journal, et un bouton permet de reverrouiller la boîte.
+* **Thème** clair, sombre ou automatique, et animations désactivées si le
+  système demande à réduire les mouvements.
+* **Raccourcis** : <kbd>Ctrl</kbd> + <kbd>Entrée</kbd> pour envoyer,
+  <kbd>/</kbd> pour la recherche, <kbd>r</kbd> pour rafraîchir.
+
 ## Documentation
 
 | Document | Contenu |
@@ -90,7 +113,7 @@ Le détail nœud par nœud, et les raisons de chaque choix, sont dans
 | `scripts/prepare.mjs` | Injecte les valeurs de `.env` dans le workflow et les identifiants |
 | `setup.sh` | Dépublie, importe, publie. À lancer n8n arrêté |
 | `start.sh` | Démarre n8n en local, à l'écoute de `127.0.0.1` uniquement |
-| `frontend/index.html` | La page de démonstration, sans dépendance externe |
+| `frontend/index.html` | La page de démonstration, un seul fichier sans dépendance externe |
 | `frontend.sh` | Sert la page sur le port 8080 |
 | `test.sh` | Neuf tests en ligne de commande, anti-spam compris |
 | `deploy/` | `docker-compose.yml`, `Caddyfile` et `deploy.sh` pour la mise en ligne |
