@@ -1,0 +1,22 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Seuls les webhooks de production sont publics.
+	# /rest/*, /webhook-test/* et l'éditeur ne sont volontairement pas exposés.
+	handle /webhook/* {
+		reverse_proxy n8n:5678
+	}
+
+	# Le reste : la page du formulaire.
+	handle {
+		root * /srv/frontend
+		file_server
+	}
+}

@@ -1,0 +1,357 @@
+{
+  "id": "ContactInbox0001",
+  "name": "Contact Inbox API",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000001",
+      "name": "POST /contact",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "7d5e2c4a-1b6f-4e8a-9c3d-2f1a0b9e8c71",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contact",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:8080"
+        }
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000002",
+      "name": "Valider & Anti-spam",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "jsCode": "// Validation, piège à robots (honeypot) et limitation du débit.\n// Sortie : { action: 'store' | 'ignore' | 'reject', status, ... }\n\nconst MAX_PER_IP = 10; // messages par IP\nconst MAX_PER_EMAIL = 3; // messages par adresse email\nconst WINDOW_MS = 10 * 60 * 1000; // sur 10 minutes\n\nconst request = $input.first().json;\nconst body = request.body || {};\nconst headers = request.headers || {};\nconst now = Date.now();\n\nconst ip = String(headers['x-forwarded-for'] || headers['x-real-ip'] || 'local')\n  .split(',')[0]\n  .trim();\n\nconst name = String(body.name ?? '').trim();\nconst email = String(body.email ?? '').trim().toLowerCase();\nconst message = String(body.message ?? '').trim();\nconst honeypot = String(body.website ?? '').trim();\n\n// Champ caché rempli => robot. On répond 201 sans rien enregistrer.\nif (honeypot) {\n  return [{ json: { action: 'ignore', status: 201, response: { ok: true, id: 'ignored' } } }];\n}\n\nconst errors = [];\nif (name.length < 2) errors.push('name must be at least 2 characters');\nif (name.length > 100) errors.push('name must be at most 100 characters');\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) errors.push('email is not valid');\nif (email.length > 200) errors.push('email must be at most 200 characters');\nif (message.length < 10) errors.push('message must be at least 10 characters');\nif (message.length > 2000) errors.push('message must be at most 2000 characters');\n\nif (errors.length > 0) {\n  return [{ json: { action: 'reject', status: 400, response: { ok: false, errors } } }];\n}\n\n// Limitation du débit : compteurs gardés dans les static data du workflow.\nconst store = $getWorkflowStaticData('global');\nconst hits = (store.hits || []).filter((h) => now - h.at < WINDOW_MS);\nconst fromIp = hits.filter((h) => h.ip === ip).length;\nconst fromEmail = hits.filter((h) => h.email === email).length;\n\nif (fromIp >= MAX_PER_IP || fromEmail >= MAX_PER_EMAIL) {\n  store.hits = hits;\n  return [\n    {\n      json: {\n        action: 'reject',\n        status: 429,\n        response: { ok: false, errors: ['too many messages, try again later'] },\n      },\n    },\n  ];\n}\n\nstore.hits = [...hits, { at: now, ip, email }].slice(-500);\n\nconst urgentWords = ['urgent', 'asap', 'down', 'broken', 'error', 'urgence', 'panne'];\nconst lower = message.toLowerCase();\nconst priority = urgentWords.some((w) => lower.includes(w)) ? 'high' : 'normal';\n\nreturn [{ json: { action: 'store', status: 201, name, email, message, priority } }];\n"
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000003",
+      "name": "Accepté ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 0],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0a8f1d2-5b4e-4a7c-8e21-9d3f6b1a2c40",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "reject",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000004",
+      "name": "À enregistrer ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [660, -120],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d1b9e2c3-6c5f-4b8d-9f32-0e4a7c2b3d51",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "store",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000016",
+      "name": "Créer la table si besoin",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [880, -200],
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "contact_submissions",
+        "columns": {
+          "column": [
+            { "name": "name", "type": "string" },
+            { "name": "email", "type": "string" },
+            { "name": "message", "type": "string" },
+            { "name": "priority", "type": "string" }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000005",
+      "name": "Enregistrer (Data Table)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [1100, -200],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "contact_submissions"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $('Valider & Anti-spam').first().json.name }}",
+            "email": "={{ $('Valider & Anti-spam').first().json.email }}",
+            "message": "={{ $('Valider & Anti-spam').first().json.message }}",
+            "priority": "={{ $('Valider & Anti-spam').first().json.priority }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000006",
+      "name": "Respond 201 Created",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1320, -200],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, id: $json.id, priority: $json.priority } }}",
+        "options": {
+          "responseCode": 201
+        }
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000007",
+      "name": "Respond 201 (robot ignoré)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [880, -20],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": 201
+        }
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000008",
+      "name": "Respond 400 / 429",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [660, 140],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": "={{ $json.status }}"
+        }
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000009",
+      "name": "Email au propriétaire",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1540, -200],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "fromEmail": "",
+        "toEmail": "",
+        "subject": "=[Contact] {{ $json.priority === 'high' ? 'URGENT : ' : '' }}Message de {{ $json.name }}",
+        "emailFormat": "text",
+        "text": "=De : {{ $json.name }} <{{ $json.email }}>\nPriorité : {{ $json.priority }}\nReçu le : {{ $json.createdAt }}\n\n{{ $json.message }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000010",
+      "name": "Priorité haute ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1760, -200],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e2c0f3d4-7d6a-4c9e-8a43-1f5b8d3c4e62",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000011",
+      "name": "Alerte Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1980, -260],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "",
+        "text": "=🔴 Message urgent de {{ $json.name }} ({{ $json.email }})\n\n{{ $json.message }}",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000012",
+      "name": "GET /contacts",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 400],
+      "webhookId": "a4c9e7b2-3d18-4f65-b0a7-6e2d9c1f5b83",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "contacts",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {
+          "allowedOrigins": "http://localhost:8080"
+        }
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000013",
+      "name": "Lire la Data Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "contact_submissions"
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "createdAt",
+        "orderByDirection": "DESC",
+        "options": {}
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000014",
+      "name": "Formater la liste",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400],
+      "parameters": {
+        "jsCode": "// Met en forme les lignes de la Data Table, avec filtre ?priority=high.\n// Tant qu'aucun message n'a été reçu, la table n'existe pas encore : on\n// renvoie simplement une liste vide.\nconst query = $('GET /contacts').first().json.query || {};\n\nlet rows = $input.all().map((item) => item.json).filter((row) => row && row.id !== undefined);\n\nif (query.priority) {\n  rows = rows.filter((row) => row.priority === query.priority);\n}\n\nconst submissions = rows.slice(0, 100).map((row) => ({\n  id: row.id,\n  name: row.name,\n  email: row.email,\n  message: row.message,\n  priority: row.priority,\n  receivedAt: row.createdAt,\n}));\n\nreturn [{ json: { count: submissions.length, submissions } }];\n"
+      }
+    },
+    {
+      "id": "3b1f6c1e-0a01-4c1a-9f10-000000000015",
+      "name": "Respond avec la liste",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 400],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "POST /contact": {
+      "main": [[{ "node": "Valider & Anti-spam", "type": "main", "index": 0 }]]
+    },
+    "Valider & Anti-spam": {
+      "main": [[{ "node": "Accepté ?", "type": "main", "index": 0 }]]
+    },
+    "Accepté ?": {
+      "main": [
+        [{ "node": "À enregistrer ?", "type": "main", "index": 0 }],
+        [{ "node": "Respond 400 / 429", "type": "main", "index": 0 }]
+      ]
+    },
+    "À enregistrer ?": {
+      "main": [
+        [{ "node": "Créer la table si besoin", "type": "main", "index": 0 }],
+        [{ "node": "Respond 201 (robot ignoré)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Créer la table si besoin": {
+      "main": [[{ "node": "Enregistrer (Data Table)", "type": "main", "index": 0 }]]
+    },
+    "Enregistrer (Data Table)": {
+      "main": [[{ "node": "Respond 201 Created", "type": "main", "index": 0 }]]
+    },
+    "Respond 201 Created": {
+      "main": [[{ "node": "Email au propriétaire", "type": "main", "index": 0 }]]
+    },
+    "Email au propriétaire": {
+      "main": [[{ "node": "Priorité haute ?", "type": "main", "index": 0 }]]
+    },
+    "Priorité haute ?": {
+      "main": [[{ "node": "Alerte Telegram", "type": "main", "index": 0 }], []]
+    },
+    "GET /contacts": {
+      "main": [[{ "node": "Lire la Data Table", "type": "main", "index": 0 }]]
+    },
+    "Lire la Data Table": {
+      "main": [[{ "node": "Formater la liste", "type": "main", "index": 0 }]]
+    },
+    "Formater la liste": {
+      "main": [[{ "node": "Respond avec la liste", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {}
+}
